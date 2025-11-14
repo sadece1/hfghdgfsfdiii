@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "npx tsc -b && npx vite build",
     "preview": "vite preview",
     "build:prod": "NODE_ENV=production tsc && vite build"
   },
@@ -47,3 +47,4 @@
     "vite": "^5.0.0"
   }
 }
+
