@@ -13,7 +13,7 @@ RUN npm ci
 COPY . .
 
 # Build the application
-RUN node node_modules/typescript/bin/tsc -b && node node_modules/vite/bin/vite.js build
+RUN node node_modules/vite/bin/vite.js build
 
 # Install serve for production
 RUN npm install -g serve
@@ -23,4 +23,5 @@ EXPOSE 5173
 
 # Start the application
 CMD ["npm", "run", "dev"]
+
 
