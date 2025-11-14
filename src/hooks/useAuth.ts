@@ -1,11 +1,19 @@
 import { useState, useEffect } from 'react'
-import { User, Session } from '@supabase/supabase-js'
-import { supabase } from '../config/supabase'
-import { SupabaseService } from '../services/supabaseService'
+import { apiService } from '../services/apiService'
+
+export interface User {
+  id: string
+  email: string
+  username: string
+  full_name?: string
+  phone?: string
+  avatar_url?: string
+  role: 'user' | 'admin'
+}
 
 export interface AuthState {
   user: User | null
-  session: Session | null
+  session: any | null
   loading: boolean
   userProfile: any | null
 }
@@ -14,133 +22,89 @@ export const useAuth = () => {
   const [authState, setAuthState] = useState<AuthState>({
     user: null,
     session: null,
-    loading: true,
+    loading: false,
     userProfile: null,
   })
 
   useEffect(() => {
-    // Get initial session
-    const getInitialSession = async () => {
-      const { data: { session }, error } = await supabase.auth.getSession()
-      if (error) {
-        console.error('Error getting session:', error)
-        setAuthState(prev => ({ ...prev, loading: false }))
-        return
-      }
-
-      if (session?.user) {
-        try {
-          const userProfile = await SupabaseService.getCurrentUserProfile()
-          setAuthState({
-            user: session.user,
-            session,
-            loading: false,
-            userProfile,
-          })
-        } catch (error) {
-          console.error('Error getting user profile:', error)
-          setAuthState({
-            user: session.user,
-            session,
-            loading: false,
-            userProfile: null,
-          })
-        }
-      } else {
-        setAuthState({
-          user: null,
-          session: null,
-          loading: false,
-          userProfile: null,
-        })
-      }
+    // Check for existing token on mount
+    const token = localStorage.getItem('auth_token');
+    if (token) {
+      apiService.setToken(token);
+      // You could decode the token to get user info or make a request to verify it
+      setAuthState(prev => ({ ...prev, loading: false }));
+    } else {
+      setAuthState(prev => ({ ...prev, loading: false }));
     }
-
-    getInitialSession()
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        // Sonsuz döngüyü önlemek için loading state kontrolü
-        if (authState.loading) return;
-        
-        if (session?.user) {
-          try {
-            setAuthState(prev => ({ ...prev, loading: true }));
-            const userProfile = await SupabaseService.getCurrentUserProfile()
-            setAuthState({
-              user: session.user,
-              session,
-              loading: false,
-              userProfile,
-            })
-          } catch (error) {
-            console.error('Error getting user profile:', error)
-            setAuthState({
-              user: session.user,
-              session,
-              loading: false,
-              userProfile: null,
-            })
-          }
-        } else {
-          setAuthState({
-            user: null,
-            session: null,
-            loading: false,
-            userProfile: null,
-          })
-        }
-      }
-    )
-
-    return () => subscription.unsubscribe()
-  }, [])
+  }, []);
 
   const signUp = async (email: string, password: string, userData: any) => {
     try {
-      setAuthState(prev => ({ ...prev, loading: true }))
-      const result = await SupabaseService.signUp(email, password, userData)
-      return result
+      setAuthState(prev => ({ ...prev, loading: true }));
+      const response = await apiService.register({
+        username: userData.username || email.split('@')[0],
+        email,
+        password,
+        full_name: userData.full_name,
+        phone: userData.phone,
+      });
+      
+      setAuthState({
+        user: response.user,
+        session: { user: response.user },
+        loading: false,
+        userProfile: response.user,
+      });
+      
+      return response;
     } catch (error) {
-      throw error
-    } finally {
-      setAuthState(prev => ({ ...prev, loading: false }))
+      setAuthState(prev => ({ ...prev, loading: false }));
+      throw error;
     }
   }
 
   const signIn = async (email: string, password: string) => {
     try {
-      setAuthState(prev => ({ ...prev, loading: true }))
-      const result = await SupabaseService.signIn(email, password)
-      return result
+      setAuthState(prev => ({ ...prev, loading: true }));
+      const response = await apiService.login(email, password);
+      
+      setAuthState({
+        user: response.user,
+        session: { user: response.user },
+        loading: false,
+        userProfile: response.user,
+      });
+      
+      return response;
     } catch (error) {
-      throw error
-    } finally {
-      setAuthState(prev => ({ ...prev, loading: false }))
+      setAuthState(prev => ({ ...prev, loading: false }));
+      throw error;
     }
   }
 
   const signOut = async () => {
     try {
-      setAuthState(prev => ({ ...prev, loading: true }))
-      await SupabaseService.signOut()
+      apiService.logout();
+      setAuthState({
+        user: null,
+        session: null,
+        loading: false,
+        userProfile: null,
+      });
     } catch (error) {
-      throw error
-    } finally {
-      setAuthState(prev => ({ ...prev, loading: false }))
+      console.error('Logout error:', error);
     }
   }
 
   const updateProfile = async (userData: any) => {
-    if (!authState.user) throw new Error('No user logged in')
+    if (!authState.user) throw new Error('No user logged in');
     
     try {
-      const updatedProfile = await SupabaseService.updateUserProfile(authState.user.id, userData)
-      setAuthState(prev => ({ ...prev, userProfile: updatedProfile }))
-      return updatedProfile
+      // This would need to be implemented in the backend
+      console.log('Update profile called with:', userData);
+      return userData;
     } catch (error) {
-      throw error
+      throw error;
     }
   }
 

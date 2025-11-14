@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { FiUser, FiLogOut, FiSearch, FiX, FiMenu } from 'react-icons/fi';
+import { FiUser, FiLogOut, FiSearch, FiX, FiMenu, FiFilter, FiChevronDown } from 'react-icons/fi';
 import { useAppStore } from '../store';
+import Fuse from 'fuse.js';
 
 const Navbar = () => {
   const navigate = useNavigate();
@@ -13,6 +14,13 @@ const Navbar = () => {
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  
+  // Gelişmiş arama state'leri
+  const [searchType, setSearchType] = useState<'all' | 'partNumber' | 'model' | 'description'>('all');
+  const [showFilters, setShowFilters] = useState(false);
+  const [stockFilter, setStockFilter] = useState<'all' | 'low' | 'out'>('all');
+  const [brandFilter, setBrandFilter] = useState<string[]>([]);
+  const [countryFilter, setCountryFilter] = useState<string[]>([]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -55,7 +63,50 @@ const Navbar = () => {
     setSearchQuery('');
     setSearchResults([]);
     setSelectedIndex(-1);
+    setShowFilters(false);
+    setSearchType('all');
+    setStockFilter('all');
+    setBrandFilter([]);
+    setCountryFilter([]);
   };
+
+  // Fuse.js konfigürasyonu
+  const fuseOptions = {
+    keys: [
+      { name: 'title', weight: 0.3 },
+      { name: 'partNumber', weight: 0.4 },
+      { name: 'model', weight: 0.3 },
+      { name: 'description', weight: 0.2 },
+      { name: 'brand', weight: 0.2 },
+      { name: 'category', weight: 0.1 },
+    ],
+    threshold: 0.3,
+    includeScore: true,
+  };
+
+  // Filtrelenmiş sonuçlar
+  const filteredResults = useMemo(() => {
+    let filtered = [...graders.map(grader => ({ ...grader, type: 'grader' })), ...parts.map(part => ({ ...part, type: 'part' }))];
+
+    // Stok filtresi (sadece parçalar için)
+    if (stockFilter === 'low') {
+      filtered = filtered.filter(item => item.type !== 'part' || (item as any).stockQuantity <= 5);
+    } else if (stockFilter === 'out') {
+      filtered = filtered.filter(item => item.type !== 'part' || (item as any).stockQuantity === 0);
+    }
+
+    // Marka filtresi
+    if (brandFilter.length > 0) {
+      filtered = filtered.filter(item => brandFilter.includes(item.brand));
+    }
+
+    // Ülke filtresi (sadece parçalar için)
+    if (countryFilter.length > 0) {
+      filtered = filtered.filter(item => item.type !== 'part' || brandFilter.includes((item as any).stockCountry));
+    }
+
+    return filtered;
+  }, [graders, parts, stockFilter, brandFilter, countryFilter]);
 
   const handleSearchInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const query = e.target.value;
@@ -65,49 +116,65 @@ const Navbar = () => {
     if (query.trim()) {
       const queryLower = query.toLowerCase();
       
-      // Search in both graders and parts with priority for exact matches
-      const allResults = [
-        ...graders.map(grader => ({ ...grader, type: 'grader' })),
-        ...parts.map(part => ({ ...part, type: 'part' }))
-      ].filter(item => {
-        // Exact part number match gets highest priority
-        if (item.type === 'part' && (item as any).partNumber?.toLowerCase() === queryLower) {
+      let results = filteredResults;
+
+      // Arama tipine göre filtreleme
+      if (searchType === 'partNumber') {
+        // Parça numarası için çok esnek arama
+        const normalizedQuery = queryLower.replace(/[\s\-_\.]/g, '');
+        results = results.filter(item => {
+          if (item.type !== 'part') return false;
+          const normalizedPartNumber = (item as any).partNumber.toLowerCase().replace(/[\s\-_\.]/g, '');
+          
+          // 1. Tam eşleşme kontrolü
+          if (normalizedPartNumber.includes(normalizedQuery) || 
+              normalizedQuery.includes(normalizedPartNumber)) {
           return true;
         }
         
-        // Partial part number match
-        if (item.type === 'part' && (item as any).partNumber?.toLowerCase().includes(queryLower)) {
+          // 2. Orijinal arama terimi ile kontrol
+          if ((item as any).partNumber.toLowerCase().includes(queryLower)) {
           return true;
         }
         
-        // Title match
-        if (item.title.toLowerCase().includes(queryLower)) {
-          return true;
-        }
-        
-        // Brand match
-        if (item.brand?.toLowerCase().includes(queryLower)) {
-          return true;
-        }
-        
-        // Model match (for graders)
-        if (item.type === 'grader' && (item as any).model?.toLowerCase().includes(queryLower)) {
-          return true;
-        }
-        
-        // Category match (for parts)
-        if (item.type === 'part' && (item as any).category?.toLowerCase().includes(queryLower)) {
-          return true;
-        }
-        
-        // Description match
-        if (item.description?.toLowerCase().includes(queryLower)) {
-          return true;
-        }
-        
-        return false;
-      }).sort((a, b) => {
-        // Sort by relevance: exact part number matches first, then partial matches
+          // 3. Karakter karakter kontrolü (1r 0 -> 1r0742)
+          const queryChars = normalizedQuery.split('');
+          const partChars = normalizedPartNumber.split('');
+          
+          let queryIndex = 0;
+          for (let i = 0; i < partChars.length && queryIndex < queryChars.length; i++) {
+            if (partChars[i] === queryChars[queryIndex]) {
+              queryIndex++;
+            }
+          }
+          
+          return queryIndex === queryChars.length;
+        });
+      } else if (searchType === 'model') {
+        results = results.filter(item => {
+          if (item.type === 'grader') {
+            return (item as any).model?.toLowerCase().includes(queryLower);
+          } else if (item.type === 'part') {
+            return (item as any).compatibleModels?.some((model: string) => 
+              model.toLowerCase().includes(queryLower)
+            );
+          }
+          return false;
+        });
+      } else if (searchType === 'description') {
+        results = results.filter(item => 
+          item.description?.toLowerCase().includes(queryLower)
+        );
+      } else {
+        // Tam metin arama - Fuse.js kullan
+        const fuse = new Fuse(results, fuseOptions);
+        const fuseResults = fuse.search(query);
+        results = fuseResults.map(result => result.item);
+      }
+
+      // Sonuçları sırala ve sınırla
+      const sortedResults = results.sort((a, b) => {
+        // Exact part number matches first
         const aIsExactPartNumber = a.type === 'part' && (a as any).partNumber?.toLowerCase() === queryLower;
         const bIsExactPartNumber = b.type === 'part' && (b as any).partNumber?.toLowerCase() === queryLower;
         
@@ -124,7 +191,7 @@ const Navbar = () => {
         return 0;
       }).slice(0, 8);
 
-      setSearchResults(allResults);
+      setSearchResults(sortedResults);
     } else {
       setSearchResults([]);
     }
@@ -207,48 +274,55 @@ const Navbar = () => {
         }`}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
+          <div className="flex items-center justify-between h-16 sm:h-20">
             {/* Logo */}
-            <Link to="/" className="flex items-center space-x-3 flex-shrink-0">
-              <div className="w-10 h-10 bg-gradient-to-br from-orange-600 to-orange-700 rounded-xl flex items-center justify-center shadow-lg">
-                <span className="text-white font-bold text-lg">G</span>
+            <Link to="/" className="flex items-center space-x-2 sm:space-x-3 flex-shrink-0">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-orange-600 to-orange-700 rounded-xl flex items-center justify-center shadow-lg">
+                <span className="text-white font-bold text-sm sm:text-lg">G</span>
               </div>
-              <span className="text-xl font-bold text-gray-900 hidden sm:block">GraderMarket</span>
+              <span className="text-lg sm:text-xl font-bold text-gray-900 hidden sm:block">GraderMarket</span>
             </Link>
 
             {/* Center Navigation Links */}
-            <div className="hidden lg:flex items-center space-x-8 mx-8">
+            <div className="hidden lg:flex items-center space-x-12 mx-12">
               <Link 
                 to="/" 
-                className="relative text-gray-700 hover:text-orange-600 transition-colors font-medium px-3 py-2 rounded-lg hover:bg-gray-50 group"
+                className="relative text-gray-700 hover:text-orange-600 transition-colors font-medium px-4 py-3 rounded-lg hover:bg-gray-50 group"
               >
                 <span>Ana Sayfa</span>
                 <div className="absolute bottom-0 left-0 w-0 h-0.5 bg-orange-600 transition-all duration-300 group-hover:w-full"></div>
               </Link>
               <Link 
                 to="/gallery" 
-                className="relative text-gray-700 hover:text-orange-600 transition-colors font-medium px-3 py-2 rounded-lg hover:bg-gray-50 group"
+                className="relative text-gray-700 hover:text-orange-600 transition-colors font-medium px-4 py-3 rounded-lg hover:bg-gray-50 group"
               >
                 <span>Galeri</span>
                 <div className="absolute bottom-0 left-0 w-0 h-0.5 bg-orange-600 transition-all duration-300 group-hover:w-full"></div>
               </Link>
               <Link 
                 to="/parts" 
-                className="relative text-gray-700 hover:text-orange-600 transition-colors font-medium px-3 py-2 rounded-lg hover:bg-gray-50 group"
+                className="relative text-gray-700 hover:text-orange-600 transition-colors font-medium px-4 py-3 rounded-lg hover:bg-gray-50 group"
               >
                 <span>Parçalar</span>
                 <div className="absolute bottom-0 left-0 w-0 h-0.5 bg-orange-600 transition-all duration-300 group-hover:w-full"></div>
               </Link>
               <Link 
+                to="/sales-map" 
+                className="relative text-gray-700 hover:text-orange-600 transition-colors font-medium px-4 py-3 rounded-lg hover:bg-gray-50 group"
+              >
+                <span>Sattığımız Makineler</span>
+                <div className="absolute bottom-0 left-0 w-0 h-0.5 bg-orange-600 transition-all duration-300 group-hover:w-full"></div>
+              </Link>
+              <Link 
                 to="/about" 
-                className="relative text-gray-700 hover:text-orange-600 transition-colors font-medium px-3 py-2 rounded-lg hover:bg-gray-50 group"
+                className="relative text-gray-700 hover:text-orange-600 transition-colors font-medium px-4 py-3 rounded-lg hover:bg-gray-50 group"
               >
                 <span>Hakkımızda</span>
                 <div className="absolute bottom-0 left-0 w-0 h-0.5 bg-orange-600 transition-all duration-300 group-hover:w-full"></div>
               </Link>
               <Link 
                 to="/contact" 
-                className="relative text-gray-700 hover:text-orange-600 transition-colors font-medium px-3 py-2 rounded-lg hover:bg-gray-50 group"
+                className="relative text-gray-700 hover:text-orange-600 transition-colors font-medium px-4 py-3 rounded-lg hover:bg-gray-50 group"
               >
                 <span>İletişim</span>
                 <div className="absolute bottom-0 left-0 w-0 h-0.5 bg-orange-600 transition-all duration-300 group-hover:w-full"></div>
@@ -262,20 +336,20 @@ const Navbar = () => {
                 {/* Search Button */}
                 <button
                   onClick={openSearch}
-                  className="flex items-center space-x-2 bg-gray-50 hover:bg-gray-100 text-gray-600 hover:text-orange-600 px-4 py-2.5 rounded-xl transition-all duration-200 border border-gray-200 hover:border-orange-600/30 hover:shadow-md"
+                  className="flex items-center space-x-3 bg-gray-50 hover:bg-gray-100 text-gray-600 hover:text-orange-600 px-6 py-3 rounded-xl transition-all duration-200 border border-gray-200 hover:border-orange-600/30 hover:shadow-md min-w-[200px]"
                 >
-                  <FiSearch className="w-4 h-4" />
-                  <span className="text-sm font-medium">Ara...</span>
+                  <FiSearch className="w-5 h-5" />
+                  <span className="text-base font-medium">Gelişmiş Arama...</span>
                 </button>
 
                 {/* User Menu */}
-                {user ? (
+                {user && (
                   <div className="relative group">
-                    <button className="flex items-center space-x-2 p-2.5 text-gray-600 hover:text-orange-600 hover:bg-gray-50 rounded-lg transition-all duration-200">
-                      <div className="w-8 h-8 bg-gradient-to-br from-orange-600 to-orange-700 rounded-full flex items-center justify-center">
-                        <FiUser className="w-4 h-4 text-white" />
+                    <button className="flex items-center space-x-3 p-3 text-gray-600 hover:text-orange-600 hover:bg-gray-50 rounded-lg transition-all duration-200">
+                      <div className="w-10 h-10 bg-gradient-to-br from-orange-600 to-orange-700 rounded-full flex items-center justify-center">
+                        <FiUser className="w-5 h-5 text-white" />
                       </div>
-                      <span className="font-medium">{user.username}</span>
+                      <span className="font-medium text-base">{user.username}</span>
                     </button>
                     
                     {/* Dropdown */}
@@ -308,32 +382,35 @@ const Navbar = () => {
                       </div>
                     </div>
                   </div>
-                ) : (
-                  <Link 
-                    to="/login" 
-                    className="bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white text-sm font-medium px-6 py-2.5 rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
-                  >
-                    Giriş Yap
-                  </Link>
                 )}
               </div>
 
               {/* Mobile Actions */}
-              <div className="lg:hidden flex items-center space-x-2">
+              <div className="lg:hidden flex items-center space-x-1 sm:space-x-2">
                 {/* Mobile Search Button */}
                 <button 
                   onClick={openSearch}
-                  className="p-2.5 text-gray-600 hover:text-orange-600 hover:bg-gray-50 rounded-lg transition-all duration-200"
+                  className="p-2 sm:p-3 text-gray-600 hover:text-orange-600 hover:bg-gray-50 rounded-lg transition-all duration-200"
                 >
-                  <FiSearch className="w-5 h-5" />
+                  <FiSearch className="w-5 h-5 sm:w-6 sm:h-6" />
                 </button>
+
+                {/* Mobile User Avatar (if logged in) */}
+                {user && (
+                  <div className="flex items-center space-x-2">
+                    <div className="w-8 h-8 bg-gradient-to-br from-orange-600 to-orange-700 rounded-full flex items-center justify-center">
+                      <FiUser className="w-4 h-4 text-white" />
+                    </div>
+                    <span className="text-sm font-medium text-gray-700 hidden sm:block">{user.username}</span>
+                  </div>
+                )}
 
                 {/* Mobile Menu Button */}
                 <button
                   onClick={toggleMobileMenu}
-                  className="p-2.5 text-gray-600 hover:text-orange-600 hover:bg-gray-50 rounded-lg transition-all duration-200"
+                  className="p-2 sm:p-3 text-gray-600 hover:text-orange-600 hover:bg-gray-50 rounded-lg transition-all duration-200"
                 >
-                  <FiMenu className="w-5 h-5" />
+                  <FiMenu className="w-5 h-5 sm:w-6 sm:h-6" />
                 </button>
               </div>
             </div>
@@ -344,87 +421,101 @@ const Navbar = () => {
       {/* Mobile Menu Overlay */}
       {isMobileMenuOpen && (
         <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 lg:hidden">
-          <div className="absolute top-16 left-0 right-0 bg-white shadow-xl border-t border-gray-200">
-            <div className="px-4 py-6 space-y-4">
+          <div className="absolute top-16 sm:top-20 left-0 right-0 bg-white shadow-xl border-t border-gray-200 max-h-[calc(100vh-4rem)] sm:max-h-[calc(100vh-5rem)] overflow-y-auto">
+            <div className="px-4 py-4 sm:py-6 space-y-4">
               {/* Mobile Navigation Links */}
-              <div className="space-y-2">
+              <div className="space-y-1">
                 <Link 
                   to="/" 
                   onClick={closeMobileMenu}
-                  className="flex items-center px-4 py-3 text-gray-700 hover:text-orange-600 hover:bg-gray-50 rounded-lg transition-colors font-medium"
+                  className="flex items-center px-3 py-3 text-gray-700 hover:text-orange-600 hover:bg-gray-50 rounded-lg transition-colors font-medium text-sm sm:text-base"
                 >
                   Ana Sayfa
                 </Link>
                 <Link 
                   to="/gallery" 
                   onClick={closeMobileMenu}
-                  className="flex items-center px-4 py-3 text-gray-700 hover:text-orange-600 hover:bg-gray-50 rounded-lg transition-colors font-medium"
+                  className="flex items-center px-3 py-3 text-gray-700 hover:text-orange-600 hover:bg-gray-50 rounded-lg transition-colors font-medium text-sm sm:text-base"
                 >
                   Galeri
                 </Link>
                 <Link 
                   to="/parts" 
                   onClick={closeMobileMenu}
-                  className="flex items-center px-4 py-3 text-gray-700 hover:text-orange-600 hover:bg-gray-50 rounded-lg transition-colors font-medium"
+                  className="flex items-center px-3 py-3 text-gray-700 hover:text-orange-600 hover:bg-gray-50 rounded-lg transition-colors font-medium text-sm sm:text-base"
                 >
                   Parçalar
                 </Link>
                 <Link 
+                  to="/sales-map" 
+                  onClick={closeMobileMenu}
+                  className="flex items-center px-3 py-3 text-gray-700 hover:text-orange-600 hover:bg-gray-50 rounded-lg transition-colors font-medium text-sm sm:text-base"
+                >
+                  Sattığımız Makineler
+                </Link>
+                <Link 
                   to="/about" 
                   onClick={closeMobileMenu}
-                  className="flex items-center px-4 py-3 text-gray-700 hover:text-orange-600 hover:bg-gray-50 rounded-lg transition-colors font-medium"
+                  className="flex items-center px-3 py-3 text-gray-700 hover:text-orange-600 hover:bg-gray-50 rounded-lg transition-colors font-medium text-sm sm:text-base"
                 >
                   Hakkımızda
                 </Link>
                 <Link 
                   to="/contact" 
                   onClick={closeMobileMenu}
-                  className="flex items-center px-4 py-3 text-gray-700 hover:text-orange-600 hover:bg-gray-50 rounded-lg transition-colors font-medium"
+                  className="flex items-center px-3 py-3 text-gray-700 hover:text-orange-600 hover:bg-gray-50 rounded-lg transition-colors font-medium text-sm sm:text-base"
                 >
                   İletişim
                 </Link>
               </div>
 
-              {/* Mobile User Section */}
+              {/* Mobile User Section - Only show if user is logged in */}
+              {user && (
               <div className="border-t border-gray-200 pt-4">
-                {user ? (
                   <div className="space-y-2">
-                    <div className="px-4 py-3 bg-gray-50 rounded-lg">
+                    {/* User Info */}
+                    <div className="px-3 py-3 bg-gradient-to-r from-orange-50 to-orange-100 rounded-lg">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-10 h-10 bg-gradient-to-br from-orange-600 to-orange-700 rounded-full flex items-center justify-center">
+                          <FiUser className="w-5 h-5 text-white" />
+                        </div>
+                        <div>
                       <p className="text-sm font-medium text-gray-900">{user.username}</p>
                       <p className="text-xs text-gray-500">{user.email}</p>
+                        </div>
+                      </div>
                     </div>
+
+                    {/* Admin Panel Link */}
                     {user.role === 'admin' && (
                         <Link 
                           to="/admin" 
                           onClick={closeMobileMenu}
-                          className="flex items-center space-x-3 px-4 py-3 text-gray-700 hover:text-orange-600 hover:bg-gray-50 rounded-lg transition-colors"
+                        className="flex items-center space-x-3 px-3 py-3 text-gray-700 hover:text-orange-600 hover:bg-gray-50 rounded-lg transition-colors"
                         >
                           <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
                             <span className="text-blue-600 font-semibold text-xs">A</span>
                           </div>
-                          <span>Admin Panel</span>
+                        <span className="text-sm sm:text-base">Admin Panel</span>
                         </Link>
                       )}
+
+                    {/* Logout Button */}
                       <button
-                        onClick={handleLogout}
-                        className="w-full flex items-center space-x-3 px-4 py-3 text-gray-700 hover:text-orange-600 hover:bg-gray-50 rounded-lg transition-colors"
+                      onClick={() => {
+                        handleLogout();
+                        closeMobileMenu();
+                      }}
+                      className="w-full flex items-center space-x-3 px-3 py-3 text-gray-700 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                       >
                         <div className="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center">
                           <FiLogOut className="w-4 h-4 text-red-600" />
                         </div>
-                        <span>Çıkış Yap</span>
+                      <span className="text-sm sm:text-base">Çıkış Yap</span>
                       </button>
                     </div>
-                  ) : (
-                    <Link 
-                      to="/login" 
-                      onClick={closeMobileMenu}
-                      className="w-full bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white text-sm font-medium px-6 py-3 rounded-xl transition-all duration-200 shadow-lg flex items-center justify-center"
-                    >
-                      Giriş Yap
-                    </Link>
-                  )}
-              </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -435,14 +526,16 @@ const Navbar = () => {
         <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-start justify-center pt-20">
           <div 
             ref={searchRef}
-            className="bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden"
+            className="bg-white rounded-xl shadow-2xl w-full max-w-4xl mx-4 overflow-hidden"
           >
             {/* Search Input */}
             <div className="p-6 border-b border-gray-200">
+              <div className="space-y-4">
+                {/* Ana Arama Input */}
               <div className="relative">
                 <input
                   type="text"
-                  placeholder="Parça numarası, grader veya parça ara..."
+                    placeholder="Parça numarası, model, marka veya açıklama ara..."
                   value={searchQuery}
                   onChange={handleSearchInput}
                   onKeyDown={handleKeyPress}
@@ -456,6 +549,120 @@ const Navbar = () => {
                 >
                   <FiX className="w-5 h-5" />
                 </button>
+                </div>
+
+                {/* Arama Tipi ve Filtreler */}
+                <div className="flex items-center gap-4">
+                  {/* Arama Tipi */}
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-medium text-gray-700">Arama:</label>
+                    <select
+                      value={searchType}
+                      onChange={(e) => setSearchType(e.target.value as any)}
+                      className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-600 focus:border-transparent"
+                    >
+                      <option value="all">Hepsi</option>
+                      <option value="partNumber">Parça No</option>
+                      <option value="model">Model</option>
+                      <option value="description">Açıklama</option>
+                    </select>
+                  </div>
+
+                  {/* Filtre Butonu */}
+                  <button
+                    onClick={() => setShowFilters(!showFilters)}
+                    className={`flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors ${
+                      showFilters || stockFilter !== 'all' || brandFilter.length > 0 || countryFilter.length > 0
+                        ? 'bg-orange-100 text-orange-700 border border-orange-300'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    <FiFilter className="w-4 h-4" />
+                    <span>Filtreler</span>
+                    <FiChevronDown className={`w-4 h-4 transition-transform ${showFilters ? 'rotate-180' : ''}`} />
+                  </button>
+                </div>
+
+                {/* Gelişmiş Filtreler */}
+                {showFilters && (
+                  <div className="bg-gray-50 p-4 rounded-lg space-y-4">
+                    {/* Stok Filtresi */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Stok Durumu</label>
+                      <div className="flex gap-2">
+                        {[
+                          { value: 'all', label: 'Hepsi' },
+                          { value: 'low', label: 'Düşük Stok (≤5)' },
+                          { value: 'out', label: 'Stok Yok' }
+                        ].map(option => (
+                          <button
+                            key={option.value}
+                            onClick={() => setStockFilter(option.value as any)}
+                            className={`px-3 py-2 text-sm rounded-lg transition-colors ${
+                              stockFilter === option.value
+                                ? 'bg-orange-600 text-white'
+                                : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
+                            }`}
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Marka Filtresi */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Marka</label>
+                      <div className="flex flex-wrap gap-2">
+                        {Array.from(new Set([...graders.map(g => g.brand), ...parts.map(p => p.brand)].filter(Boolean))).map(brand => (
+                          <button
+                            key={brand}
+                            onClick={() => {
+                              setBrandFilter(prev => 
+                                prev.includes(brand) 
+                                  ? prev.filter(b => b !== brand)
+                                  : [...prev, brand]
+                              );
+                            }}
+                            className={`px-3 py-2 text-sm rounded-lg transition-colors ${
+                              brandFilter.includes(brand)
+                                ? 'bg-orange-600 text-white'
+                                : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
+                            }`}
+                          >
+                            {brand}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Ülke Filtresi */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Stok Ülkesi</label>
+                      <div className="flex gap-2">
+                        {['EU', 'Kenya', 'US'].map(country => (
+                          <button
+                            key={country}
+                            onClick={() => {
+                              setCountryFilter(prev => 
+                                prev.includes(country) 
+                                  ? prev.filter(c => c !== country)
+                                  : [...prev, country]
+                              );
+                            }}
+                            className={`px-3 py-2 text-sm rounded-lg transition-colors ${
+                              countryFilter.includes(country)
+                                ? 'bg-orange-600 text-white'
+                                : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
+                            }`}
+                          >
+                            {country}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -497,9 +704,23 @@ const Navbar = () => {
                             }
                           </p>
                           {result.type === 'part' && (
-                            <p className="text-xs text-orange-600 font-medium mt-1">
+                            <div className="mt-1 space-y-1">
+                              <p className="text-xs text-orange-600 font-medium">
                               Parça No: {result.partNumber}
                             </p>
+                              <div className="flex items-center gap-2">
+                                <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                                  result.stockQuantity > 0
+                                    ? 'bg-blue-100 text-blue-800'
+                                    : 'bg-red-100 text-red-800'
+                                }`}>
+                                  Stok: {result.stockQuantity}
+                                </span>
+                                <span className="text-xs text-gray-500">
+                                  {result.stockCountry}
+                                </span>
+                              </div>
+                            </div>
                           )}
                         </div>
                         <div className="text-right">

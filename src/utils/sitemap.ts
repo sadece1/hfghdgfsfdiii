@@ -1,5 +1,3 @@
-import { supabase } from '../config/supabase';
-
 export interface SitemapUrl {
   loc: string;
   lastmod: string;
@@ -33,45 +31,6 @@ export class SitemapGenerator {
         priority: page.priority
       });
     });
-
-    try {
-      // Fetch graders
-      const { data: graders } = await supabase
-        .from('cars')
-        .select('id, updated_at')
-        .eq('is_sold', false)
-        .order('updated_at', { ascending: false });
-
-      if (graders) {
-        graders.forEach(grader => {
-          urls.push({
-            loc: `${baseUrl}/grader/${grader.id}`,
-            lastmod: grader.updated_at ? grader.updated_at.split('T')[0] : new Date().toISOString().split('T')[0],
-            changefreq: 'weekly',
-            priority: 0.8
-          });
-        });
-      }
-
-      // Fetch parts (if you have a parts table)
-      const { data: parts } = await supabase
-        .from('parts')
-        .select('id, updated_at')
-        .order('updated_at', { ascending: false });
-
-      if (parts) {
-        parts.forEach(part => {
-          urls.push({
-            loc: `${baseUrl}/part/${part.id}`,
-            lastmod: part.updated_at ? part.updated_at.split('T')[0] : new Date().toISOString().split('T')[0],
-            changefreq: 'weekly',
-            priority: 0.8
-          });
-        });
-      }
-    } catch (error) {
-      console.error('Error fetching dynamic content for sitemap:', error);
-    }
 
     // Generate XML
     let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';

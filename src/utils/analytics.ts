@@ -4,10 +4,6 @@ export interface AnalyticsConfig {
     measurementId: string;
     enabled: boolean;
   };
-  cloudflareAnalytics?: {
-    enabled: boolean;
-    token?: string;
-  };
   customAnalytics?: {
     endpoint: string;
     enabled: boolean;
@@ -48,11 +44,6 @@ export class AnalyticsManager {
       // Initialize Google Analytics
       if (this.config.googleAnalytics?.enabled) {
         await this.initializeGoogleAnalytics();
-      }
-
-      // Initialize Cloudflare Analytics
-      if (this.config.cloudflareAnalytics?.enabled) {
-        await this.initializeCloudflareAnalytics();
       }
 
       // Initialize Performance Monitoring
@@ -103,15 +94,6 @@ export class AnalyticsManager {
     this.trackPageView();
   }
 
-  private async initializeCloudflareAnalytics(): Promise<void> {
-    // Cloudflare Web Analytics
-    const script = document.createElement('script');
-    script.src = 'https://static.cloudflareinsights.com/beacon.min.js';
-    script.setAttribute('data-cf-beacon', JSON.stringify({
-      token: this.config.cloudflareAnalytics?.token || 'default'
-    }));
-    document.head.appendChild(script);
-  }
 
   private async initializePerformanceMonitoring(): Promise<void> {
     // Monitor Core Web Vitals
@@ -374,10 +356,6 @@ export const defaultAnalyticsConfig: AnalyticsConfig = {
   googleAnalytics: {
     measurementId: process.env.REACT_APP_GA_MEASUREMENT_ID || '',
     enabled: !!process.env.REACT_APP_GA_MEASUREMENT_ID
-  },
-  cloudflareAnalytics: {
-    enabled: true,
-    token: process.env.REACT_APP_CLOUDFLARE_TOKEN
   },
   customAnalytics: {
     endpoint: '/api/analytics',

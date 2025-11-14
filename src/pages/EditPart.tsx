@@ -27,6 +27,7 @@ const EditPart = () => {
       weight: '',
       warranty: ''
     },
+    stockQuantity: '',
     isNew: true
   });
 
@@ -50,6 +51,7 @@ const EditPart = () => {
           weight: part.specifications.weight,
           warranty: part.specifications.warranty,
         },
+        stockQuantity: part.stockQuantity?.toString() || '0',
         isNew: part.isNew
       });
     }
@@ -92,6 +94,9 @@ const EditPart = () => {
     }
     if (!formData.partNumber.trim()) {
       newErrors.partNumber = 'Parça numarası gereklidir';
+    }
+    if (!formData.stockQuantity || isNaN(Number(formData.stockQuantity)) || Number(formData.stockQuantity) < 0) {
+      newErrors.stockQuantity = 'Geçerli bir stok miktarı giriniz (0 veya daha büyük)';
     }
     if (!formData.description.trim()) {
       newErrors.description = 'Açıklama gereklidir';
@@ -139,6 +144,7 @@ const EditPart = () => {
         description: sanitizedFormData.description,
         images: sanitizedFormData.images,
         specifications: sanitizedFormData.specifications,
+        stockQuantity: Number(formData.stockQuantity),
         isNew: formData.isNew
       };
 
@@ -325,6 +331,23 @@ const EditPart = () => {
                   placeholder="1R-0742"
                 />
                 {errors.partNumber && <p className="text-red-500 text-sm mt-1">{errors.partNumber}</p>}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Stok Miktarı *
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={formData.stockQuantity}
+                  onChange={(e) => setFormData(prev => ({ ...prev, stockQuantity: e.target.value }))}
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-600 focus:border-transparent ${
+                    errors.stockQuantity ? 'border-red-500' : 'border-gray-300'
+                  }`}
+                  placeholder="15"
+                />
+                {errors.stockQuantity && <p className="text-red-500 text-sm mt-1">{errors.stockQuantity}</p>}
               </div>
 
               <div>

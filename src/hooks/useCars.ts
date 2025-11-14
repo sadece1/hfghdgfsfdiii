@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { SupabaseService } from '../services/supabaseService'
+import { apiService } from '../services/apiService'
 
 export interface CarFilters {
   brand?: string
@@ -23,7 +23,7 @@ export const useCars = (filters?: CarFilters) => {
       try {
         setLoading(true)
         setError(null)
-        const data = await SupabaseService.getCars(filters)
+        const data = await apiService.getGraders(filters)
         setCars(data)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'An error occurred')
@@ -37,7 +37,7 @@ export const useCars = (filters?: CarFilters) => {
 
   const createCar = async (carData: any) => {
     try {
-      const newCar = await SupabaseService.createCar(carData)
+      const newCar = await apiService.createGrader(carData)
       setCars(prev => [newCar, ...prev])
       return newCar
     } catch (err) {
@@ -47,7 +47,7 @@ export const useCars = (filters?: CarFilters) => {
 
   const updateCar = async (id: string, carData: any) => {
     try {
-      const updatedCar = await SupabaseService.updateCar(id, carData)
+      const updatedCar = await apiService.updateGrader(id, carData)
       setCars(prev => prev.map(car => car.id === id ? updatedCar : car))
       return updatedCar
     } catch (err) {
@@ -57,7 +57,7 @@ export const useCars = (filters?: CarFilters) => {
 
   const deleteCar = async (id: string) => {
     try {
-      await SupabaseService.deleteCar(id)
+      await apiService.deleteGrader(id)
       setCars(prev => prev.filter(car => car.id !== id))
     } catch (err) {
       throw err
@@ -71,17 +71,17 @@ export const useCars = (filters?: CarFilters) => {
     createCar,
     updateCar,
     deleteCar,
-    refetch: () => {
-      setLoading(true)
-      SupabaseService.getCars(filters)
-        .then(data => {
-          setCars(data)
-          setError(null)
-        })
-        .catch(err => {
-          setError(err instanceof Error ? err.message : 'An error occurred')
-        })
-        .finally(() => setLoading(false))
+    refetch: async () => {
+      try {
+        setLoading(true)
+        const data = await apiService.getGraders(filters)
+        setCars(data)
+        setError(null)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'An error occurred')
+      } finally {
+        setLoading(false)
+      }
     }
   }
 }
@@ -98,7 +98,7 @@ export const useCar = (id: string) => {
       try {
         setLoading(true)
         setError(null)
-        const data = await SupabaseService.getCarById(id)
+        const data = await apiService.getGraderById(id)
         setCar(data)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'An error occurred')
@@ -125,8 +125,8 @@ export const useFavorites = (userId: string) => {
       try {
         setLoading(true)
         setError(null)
-        const data = await SupabaseService.getFavorites(userId)
-        setFavorites(data)
+        // This would need to be implemented in the backend
+        setFavorites([])
       } catch (err) {
         setError(err instanceof Error ? err.message : 'An error occurred')
       } finally {
@@ -139,8 +139,8 @@ export const useFavorites = (userId: string) => {
 
   const addToFavorites = async (carId: string) => {
     try {
-      const favorite = await SupabaseService.addToFavorites(userId, carId)
-      setFavorites(prev => [...prev, favorite])
+      // This would need to be implemented in the backend
+      console.log('Add to favorites called with:', { userId, carId })
     } catch (err) {
       throw err
     }
@@ -148,8 +148,8 @@ export const useFavorites = (userId: string) => {
 
   const removeFromFavorites = async (carId: string) => {
     try {
-      await SupabaseService.removeFromFavorites(userId, carId)
-      setFavorites(prev => prev.filter(fav => fav.car_id !== carId))
+      // This would need to be implemented in the backend
+      console.log('Remove from favorites called with:', { userId, carId })
     } catch (err) {
       throw err
     }
@@ -157,7 +157,9 @@ export const useFavorites = (userId: string) => {
 
   const isFavorite = async (carId: string) => {
     try {
-      return await SupabaseService.isFavorite(userId, carId)
+      // This would need to be implemented in the backend
+      console.log('Is favorite called with:', { userId, carId })
+      return false
     } catch (err) {
       return false
     }

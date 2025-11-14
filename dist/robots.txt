@@ -1,0 +1,22 @@
+User-agent: *
+Allow: /
+
+# Disallow admin and private areas
+Disallow: /admin/
+Disallow: /api/
+Disallow: /_next/
+Disallow: /static/
+
+# Allow important pages
+Allow: /
+Allow: /gallery
+Allow: /parts
+Allow: /about
+Allow: /contact
+Allow: /faq
+
+# Sitemap location
+Sitemap: https://grader-marketplace.com/sitemap.xml
+
+# Crawl delay (optional)
+Crawl-delay: 1

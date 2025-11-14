@@ -129,6 +129,7 @@ const mockParts: Part[] = [
     createdAt: new Date().toISOString(),
     listingDate: new Date().toISOString(),
     stockCountry: 'EU',
+    stockQuantity: 15,
   },
   {
     id: 'p2',
@@ -153,6 +154,7 @@ const mockParts: Part[] = [
     createdAt: new Date().toISOString(),
     listingDate: new Date().toISOString(),
     stockCountry: 'Kenya',
+    stockQuantity: 8,
   },
   {
     id: 'p3',
@@ -177,6 +179,7 @@ const mockParts: Part[] = [
     createdAt: new Date(Date.now() - 86400000).toISOString(),
     listingDate: new Date(Date.now() - 86400000).toISOString(),
     stockCountry: 'US',
+    stockQuantity: 3,
   },
   {
     id: 'p4',
@@ -201,6 +204,7 @@ const mockParts: Part[] = [
     createdAt: new Date(Date.now() - 172800000).toISOString(),
     listingDate: new Date(Date.now() - 172800000).toISOString(),
     stockCountry: 'EU',
+    stockQuantity: 22,
   },
 ];
 
@@ -359,6 +363,21 @@ export const useAppStore = create<AppState & AppActions>()(
           }
           if (state.parts.length === 0) {
             state.parts = [...mockParts];
+          } else {
+            // Ensure all parts have required fields
+            state.parts = state.parts.map(part => ({
+              ...part,
+              stockQuantity: part.stockQuantity ?? 0,
+              stockCountry: part.stockCountry ?? 'EU',
+              compatibleModels: part.compatibleModels ?? [],
+              images: part.images ?? [],
+              specifications: part.specifications ?? {
+                material: '',
+                dimensions: '',
+                weight: '',
+                warranty: ''
+              }
+            }));
           }
           if (state.homepageSlider.length === 0) {
             state.homepageSlider = [...mockHomepageSlider];

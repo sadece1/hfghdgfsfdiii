@@ -172,6 +172,13 @@ const PartDetails = () => {
                     }`}>
                       {part.isNew ? 'Yeni' : 'İkinci El'}
                     </span>
+                    <span className={`inline-flex px-3 py-1 text-sm font-semibold rounded-full ${
+                      part.stockQuantity > 0 
+                        ? 'bg-blue-100 text-blue-800' 
+                        : 'bg-red-100 text-red-800'
+                    }`}>
+                      Stok: {part.stockQuantity} adet
+                    </span>
                     <span className="text-sm text-gray-500">
                       Parça No: {SecurityUtils.sanitizeHtml(part.partNumber)}
                     </span>

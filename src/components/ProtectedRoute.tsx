@@ -1,6 +1,6 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { SessionManager } from '../utils/security';
+import { useAuth } from '../hooks/useAuth';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -14,7 +14,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   fallbackPath = '/login'
 }) => {
   const location = useLocation();
-  const user = SessionManager.getSession();
+  const { user } = useAuth();
 
   // Check if user is authenticated
   if (!user) {

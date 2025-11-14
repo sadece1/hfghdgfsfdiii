@@ -71,6 +71,11 @@ const Footer = () => {
                   SSS
                 </Link>
               </li>
+              <li>
+                <Link to="/login" className="text-gray-400 hover:text-white transition-colors">
+                  Giriş Yap
+                </Link>
+              </li>
             </ul>
           </div>
 

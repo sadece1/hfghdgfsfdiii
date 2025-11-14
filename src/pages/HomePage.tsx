@@ -10,16 +10,7 @@ const HomePage = () => {
   const [startX, setStartX] = useState(0);
   const [, setCurrentX] = useState(0);
   const [dragOffset, setDragOffset] = useState(0);
-
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, []);
-
-  // Force re-render when homepageSlider changes
-  useEffect(() => {
-    // This will trigger a re-render when homepageSlider changes
-    console.log('HomePage - Slider updated:', homepageSlider.length, 'items');
-  }, [homepageSlider]);
+  const [isAutoPlaying, setIsAutoPlaying] = useState(true);
 
   const getSliderData = (item: any) => {
     if (item.type === 'grader') {
@@ -46,12 +37,42 @@ const HomePage = () => {
 
   const displaySliderItems = getSliderItemsForDisplay();
 
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+
+  // Force re-render when homepageSlider changes
+  useEffect(() => {
+    // This will trigger a re-render when homepageSlider changes
+    console.log('HomePage - Slider updated:', homepageSlider.length, 'items');
+  }, [homepageSlider]);
+
+  // Auto-play functionality
+  useEffect(() => {
+    if (!isAutoPlaying || displaySliderItems.length <= 1) return;
+
+    const interval = setInterval(() => {
+      setCurrentSlide((prev) => (prev + 1) % displaySliderItems.length);
+    }, 4000); // 4 saniyede bir değişsin
+
+    return () => clearInterval(interval);
+  }, [isAutoPlaying, displaySliderItems.length]);
+
+  // Pause auto-play when user interacts
+  useEffect(() => {
+    if (isDragging) {
+      setIsAutoPlaying(false);
+    }
+  }, [isDragging]);
+
   const nextSlide = () => {
     setCurrentSlide((prev) => (prev + 1) % displaySliderItems.length);
+    setIsAutoPlaying(true); // Restart auto-play after manual navigation
   };
 
   const prevSlide = () => {
     setCurrentSlide((prev) => (prev - 1 + displaySliderItems.length) % displaySliderItems.length);
+    setIsAutoPlaying(true); // Restart auto-play after manual navigation
   };
 
   const handleDragStart = (clientX: number) => {
@@ -82,6 +103,11 @@ const HomePage = () => {
       } else {
         nextSlide();
       }
+    } else {
+      // If no significant drag, restart auto-play after a delay
+      setTimeout(() => {
+        setIsAutoPlaying(true);
+      }, 2000);
     }
     
     setDragOffset(0);
@@ -105,11 +131,24 @@ const HomePage = () => {
   };
 
   const handleTouchStart = (e: React.TouchEvent) => {
-    handleDragStart(e.touches[0].clientX);
+    const touch = e.touches[0];
+    setStartX(touch.clientX);
+    setCurrentX(touch.clientY); // Store Y for vertical detection
+    handleDragStart(touch.clientX);
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
-    handleDragMove(e.touches[0].clientX);
+    if (!isDragging) return;
+    
+    const touch = e.touches[0];
+    const deltaX = touch.clientX - startX;
+    const deltaY = Math.abs(touch.clientY - (currentX as number));
+    
+    // Only handle horizontal swipes, allow vertical scrolling
+    if (Math.abs(deltaX) > deltaY && Math.abs(deltaX) > 10) {
+      e.preventDefault(); // Prevent scrolling only for horizontal swipes
+      handleDragMove(touch.clientX);
+    }
   };
 
   const handleTouchEnd = () => {
@@ -191,15 +230,19 @@ const HomePage = () => {
 
             <div className="relative">
               <div 
-                className="overflow-hidden rounded-xl cursor-grab active:cursor-grabbing select-none touch-pan-x"
+                className="overflow-hidden rounded-xl cursor-grab active:cursor-grabbing select-none"
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
-                onMouseLeave={handleMouseLeave}
+                onMouseEnter={() => setIsAutoPlaying(false)}
+                onMouseLeave={() => {
+                  handleMouseLeave();
+                  setIsAutoPlaying(true);
+                }}
                 onTouchStart={handleTouchStart}
                 onTouchMove={handleTouchMove}
                 onTouchEnd={handleTouchEnd}
-                style={{ touchAction: 'pan-x' }}
+                style={{ touchAction: 'pan-y pinch-zoom' }}
               >
                 <div 
                   className="flex transition-transform duration-300 ease-out"

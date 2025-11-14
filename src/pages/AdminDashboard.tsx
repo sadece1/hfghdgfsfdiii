@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
-import { FiEye, FiEdit, FiTrash2, FiPlus, FiTruck, FiSettings, FiCalendar, FiArrowUp, FiArrowDown, FiX, FiMessageCircle } from 'react-icons/fi';
+import { useState, useEffect, useMemo } from 'react';
+import { FiEye, FiEdit, FiTrash2, FiPlus, FiTruck, FiSettings, FiCalendar, FiArrowUp, FiArrowDown, FiX, FiSearch, FiFilter } from 'react-icons/fi';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { SecurityUtils } from '../utils/security';
-import ChatAnalytics from '../components/ChatAnalytics';
+import Fuse from 'fuse.js';
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
@@ -26,11 +26,195 @@ const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState<'graders' | 'parts' | 'homepage' | 'analytics'>('graders');
   const [showProductSelectionModal, setShowProductSelectionModal] = useState(false);
   const [selectedProductType, setSelectedProductType] = useState<'grader' | 'part' | null>(null);
+  
+  // Arama ve filtreleme state'leri
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchType, setSearchType] = useState<'all' | 'partNumber' | 'model' | 'description'>('all');
+  const [showFilters, setShowFilters] = useState(false);
+  const [stockFilter, setStockFilter] = useState<'all' | 'low' | 'out'>('all');
+  const [brandFilter, setBrandFilter] = useState<string[]>([]);
+  const [countryFilter, setCountryFilter] = useState<string[]>([]);
 
   useEffect(() => {
     // Scroll to top on page load
     window.scrollTo(0, 0);
   }, []);
+
+  // Fuse.js konfigürasyonu
+  const fuseOptions = {
+    keys: [
+      { name: 'title', weight: 0.3 },
+      { name: 'partNumber', weight: 0.4 },
+      { name: 'model', weight: 0.3 },
+      { name: 'description', weight: 0.2 },
+      { name: 'brand', weight: 0.2 },
+      { name: 'category', weight: 0.1 },
+    ],
+    threshold: 0.3,
+    includeScore: true,
+  };
+
+  // Filtrelenmiş parçalar
+  const filteredParts = useMemo(() => {
+    let filtered = parts;
+
+    // Stok filtresi
+    if (stockFilter === 'low') {
+      filtered = filtered.filter(part => part.stockQuantity <= 5);
+    } else if (stockFilter === 'out') {
+      filtered = filtered.filter(part => part.stockQuantity === 0);
+    }
+
+    // Marka filtresi
+    if (brandFilter.length > 0) {
+      filtered = filtered.filter(part => brandFilter.includes(part.brand));
+    }
+
+    // Ülke filtresi
+    if (countryFilter.length > 0) {
+      filtered = filtered.filter(part => countryFilter.includes(part.stockCountry));
+    }
+
+    // Arama filtresi
+    if (searchQuery.trim()) {
+      if (searchType === 'partNumber') {
+        // Parça numarası için çok esnek arama
+        const normalizedQuery = searchQuery.toLowerCase().replace(/[\s\-_\.]/g, '');
+        filtered = filtered.filter(part => {
+          const normalizedPartNumber = part.partNumber.toLowerCase().replace(/[\s\-_\.]/g, '');
+          
+          // 1. Tam eşleşme kontrolü
+          if (normalizedPartNumber.includes(normalizedQuery) || 
+              normalizedQuery.includes(normalizedPartNumber)) {
+            return true;
+          }
+          
+          // 2. Orijinal arama terimi ile kontrol
+          if (part.partNumber.toLowerCase().includes(searchQuery.toLowerCase())) {
+            return true;
+          }
+          
+          // 3. Karakter karakter kontrolü (1r 0 -> 1r0742)
+          const queryChars = normalizedQuery.split('');
+          const partChars = normalizedPartNumber.split('');
+          
+          // Arama terimindeki karakterlerin sırasıyla parça numarasında olup olmadığını kontrol et
+          let queryIndex = 0;
+          for (let i = 0; i < partChars.length && queryIndex < queryChars.length; i++) {
+            if (partChars[i] === queryChars[queryIndex]) {
+              queryIndex++;
+            }
+          }
+          
+          // Eğer arama terimindeki tüm karakterler sırasıyla bulunduysa
+          if (queryIndex === queryChars.length) {
+            return true;
+          }
+          
+          return false;
+        });
+      } else if (searchType === 'model') {
+        filtered = filtered.filter(part => 
+          part.compatibleModels.some(model => 
+            model.toLowerCase().includes(searchQuery.toLowerCase())
+          )
+        );
+      } else if (searchType === 'description') {
+        filtered = filtered.filter(part => 
+          part.description.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+      } else {
+        // Tam metin arama - Fuse.js kullan
+        const fuse = new Fuse(filtered, fuseOptions);
+        const results = fuse.search(searchQuery);
+        filtered = results.map(result => result.item);
+      }
+    }
+
+    return filtered;
+  }, [parts, searchQuery, searchType, stockFilter, brandFilter, countryFilter]);
+
+  // Filtrelenmiş graderlar
+  const filteredGraders = useMemo(() => {
+    let filtered = graders;
+
+    // Marka filtresi
+    if (brandFilter.length > 0) {
+      filtered = filtered.filter(grader => brandFilter.includes(grader.brand || ''));
+    }
+
+    // Ülke filtresi
+    if (countryFilter.length > 0) {
+      filtered = filtered.filter(grader => countryFilter.includes(grader.stockCountry));
+    }
+
+    // Arama filtresi
+    if (searchQuery.trim()) {
+      if (searchType === 'model') {
+        // Model numarası için çok esnek arama
+        const normalizedQuery = searchQuery.toLowerCase().replace(/[\s\-_\.]/g, '');
+        filtered = filtered.filter(grader => {
+          const normalizedModel = grader.model?.toLowerCase().replace(/[\s\-_\.]/g, '') || '';
+          
+          // 1. Tam eşleşme kontrolü
+          if (normalizedModel.includes(normalizedQuery) || 
+              normalizedQuery.includes(normalizedModel)) {
+            return true;
+          }
+          
+          // 2. Orijinal arama terimi ile kontrol
+          if (grader.model?.toLowerCase().includes(searchQuery.toLowerCase())) {
+            return true;
+          }
+          
+          // 3. Karakter karakter kontrolü (140 -> 140M)
+          const queryChars = normalizedQuery.split('');
+          const modelChars = normalizedModel.split('');
+          
+          // Arama terimindeki karakterlerin sırasıyla model numarasında olup olmadığını kontrol et
+          let queryIndex = 0;
+          for (let i = 0; i < modelChars.length && queryIndex < queryChars.length; i++) {
+            if (modelChars[i] === queryChars[queryIndex]) {
+              queryIndex++;
+            }
+          }
+          
+          // Eğer arama terimindeki tüm karakterler sırasıyla bulunduysa
+          if (queryIndex === queryChars.length) {
+            return true;
+          }
+          
+          return false;
+        });
+      } else if (searchType === 'description') {
+        filtered = filtered.filter(grader => 
+          grader.description.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+      } else {
+        // Tam metin arama - Fuse.js kullan
+        const fuse = new Fuse(filtered, fuseOptions);
+        const results = fuse.search(searchQuery);
+        filtered = results.map(result => result.item);
+      }
+    }
+
+    return filtered;
+  }, [graders, searchQuery, searchType, brandFilter, countryFilter]);
+
+  // Benzersiz markalar ve ülkeler
+  const uniqueBrands = useMemo(() => {
+    const brands = new Set<string>();
+    graders.forEach(grader => grader.brand && brands.add(grader.brand));
+    parts.forEach(part => brands.add(part.brand));
+    return Array.from(brands).sort();
+  }, [graders, parts]);
+
+  const uniqueCountries = useMemo(() => {
+    const countries = new Set<string>();
+    graders.forEach(grader => countries.add(grader.stockCountry));
+    parts.forEach(part => countries.add(part.stockCountry));
+    return Array.from(countries).sort();
+  }, [graders, parts]);
 
   const handleDeleteGrader = async (graderId: string) => {
     setIsDeleting(true);
@@ -74,6 +258,23 @@ const AdminDashboard = () => {
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('tr-TR');
+  };
+
+  const getCountryFlag = (countryCode: string) => {
+    switch (countryCode) {
+      case 'EU': return '🇪🇺';
+      case 'Kenya': return '🇰🇪';
+      case 'US': return '🇺🇸';
+      default: return '🌍';
+    }
+  };
+
+  // Arama sonuçlarında vurgulama için yardımcı fonksiyon
+  const highlightSearchTerm = (text: string, searchTerm: string) => {
+    if (!searchTerm.trim()) return text;
+    
+    const regex = new RegExp(`(${searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+    return text.replace(regex, '<mark class="bg-yellow-200 px-1 rounded">$1</mark>');
   };
 
   const toggleSaleStatus = (type: 'grader' | 'part', id: string) => {
@@ -231,6 +432,146 @@ const AdminDashboard = () => {
         </div>
       </div>
 
+      {/* Arama ve Filtreleme */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-8">
+        <div className="flex flex-col lg:flex-row gap-4">
+          {/* Arama Kutusu */}
+          <div className="flex-1">
+            <div className="relative">
+              <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+              <input
+                type="text"
+                placeholder={
+                  searchType === 'partNumber' ? 'Parça numarası (örn: 1R-0742, 1r0742, 1r 0, 1r)' :
+                  searchType === 'model' ? 'Model numarası (örn: 140M, 140m, 140, 14)' :
+                  searchType === 'description' ? 'Açıklama içinde ara...' :
+                  'Tam metin arama...'
+                }
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+              />
+            </div>
+          </div>
+          
+          {/* Arama Tipi Seçici */}
+          <div className="lg:w-48">
+            <select
+              value={searchType}
+              onChange={(e) => setSearchType(e.target.value as any)}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+            >
+              <option value="all">Tam Metin Arama</option>
+              <option value="partNumber">Parça Numarası</option>
+              <option value="model">Model Numarası</option>
+              <option value="description">Açıklama</option>
+            </select>
+          </div>
+          
+          {/* Filtre Butonu */}
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className={`px-6 py-3 rounded-lg flex items-center space-x-2 transition-colors ${
+              showFilters 
+                ? 'bg-orange-600 text-white' 
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            <FiFilter className="w-5 h-5" />
+            <span>Filtreler</span>
+          </button>
+        </div>
+        
+        {/* Filtreler */}
+        {showFilters && (
+          <div className="mt-6 pt-6 border-t border-gray-200">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* Stok Filtresi (Sadece Parçalar için) */}
+              {activeTab === 'parts' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Stok Durumu</label>
+                  <select
+                    value={stockFilter}
+                    onChange={(e) => setStockFilter(e.target.value as any)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                  >
+                    <option value="all">Tümü</option>
+                    <option value="low">Düşük Stok (≤5)</option>
+                    <option value="out">Stok Yok (0)</option>
+                  </select>
+                </div>
+              )}
+              
+              {/* Marka Filtresi */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Marka</label>
+                <div className="space-y-2 max-h-32 overflow-y-auto">
+                  {uniqueBrands.map(brand => (
+                    <label key={brand} className="flex items-center">
+                      <input
+                        type="checkbox"
+                        checked={brandFilter.includes(brand)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setBrandFilter([...brandFilter, brand]);
+                          } else {
+                            setBrandFilter(brandFilter.filter(b => b !== brand));
+                          }
+                        }}
+                        className="rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                      />
+                      <span className="ml-2 text-sm text-gray-700">{brand}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              
+              {/* Ülke Filtresi */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Stok Ülkesi</label>
+                <div className="space-y-2 max-h-32 overflow-y-auto">
+                  {uniqueCountries.map(country => (
+                    <label key={country} className="flex items-center">
+                      <input
+                        type="checkbox"
+                        checked={countryFilter.includes(country)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setCountryFilter([...countryFilter, country]);
+                          } else {
+                            setCountryFilter(countryFilter.filter(c => c !== country));
+                          }
+                        }}
+                        className="rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                      />
+                      <span className="ml-2 text-sm text-gray-700 flex items-center">
+                        <span className="mr-1">{getCountryFlag(country)}</span>
+                        {country}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+            
+            {/* Filtreleri Temizle */}
+            <div className="mt-4 flex justify-end">
+              <button
+                onClick={() => {
+                  setSearchQuery('');
+                  setStockFilter('all');
+                  setBrandFilter([]);
+                  setCountryFilter([]);
+                }}
+                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Filtreleri Temizle
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Tab Navigation */}
       <div className="border-b border-gray-200 mb-8">
         <nav className="-mb-px flex space-x-8">
@@ -242,7 +583,7 @@ const AdminDashboard = () => {
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
             }`}
           >
-            Graders ({graders.length})
+            Graders ({filteredGraders.length}/{graders.length})
           </button>
           <button
             onClick={() => setActiveTab('parts')}
@@ -252,7 +593,7 @@ const AdminDashboard = () => {
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
             }`}
           >
-            Parçalar ({parts.length})
+            Parçalar ({filteredParts.length}/{parts.length})
           </button>
           <button
             onClick={() => setActiveTab('homepage')}
@@ -264,17 +605,6 @@ const AdminDashboard = () => {
           >
             Ana Sayfa Slider ({homepageSlider.length})
           </button>
-          <button
-            onClick={() => setActiveTab('analytics')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'analytics'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            <FiMessageCircle className="inline w-4 h-4 mr-1" />
-            Chat Analytics
-          </button>
         </nav>
       </div>
 
@@ -282,7 +612,21 @@ const AdminDashboard = () => {
       {activeTab === 'graders' && (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden mb-8">
           <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-xl font-bold text-gray-900">Graders</h2>
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl font-bold text-gray-900">Graders</h2>
+              {searchQuery && (
+                <div className="text-sm text-gray-600">
+                  <span className="font-medium">{filteredGraders.length}</span> sonuç bulundu
+                  {searchType !== 'all' && (
+                    <span className="ml-2 text-orange-600">
+                      ({searchType === 'partNumber' ? 'Parça Numarası' : 
+                        searchType === 'model' ? 'Model' : 
+                        searchType === 'description' ? 'Açıklama' : 'Tam Metin'} araması)
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -296,6 +640,9 @@ const AdminDashboard = () => {
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Yıl
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Stok Ülkesi
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     İlan Tarihi
@@ -312,8 +659,8 @@ const AdminDashboard = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {graders.map((grader) => (
-                  <tr key={grader.id} className="hover:bg-gray-50">
+                {filteredGraders.map((grader) => (
+                  <tr key={grader.id} className="hover:bg-gray-50 group relative">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
                         <div className="flex-shrink-0 h-12 w-16">
@@ -329,7 +676,43 @@ const AdminDashboard = () => {
                           </div>
                           <div className="text-sm text-gray-500">
                             {SecurityUtils.sanitizeHtml(grader.location)}
+                            {grader.model && (
+                              <span className="ml-2 text-orange-600 font-medium">
+                                <span 
+                                  dangerouslySetInnerHTML={{
+                                    __html: highlightSearchTerm(
+                                      SecurityUtils.sanitizeHtml(grader.model || ''), 
+                                      searchQuery
+                                    )
+                                  }}
+                                />
+                              </span>
+                            )}
                           </div>
+                        </div>
+                      </div>
+                      
+                      {/* Hover Tooltip */}
+                      <div className="absolute left-0 top-0 bg-gray-900 text-white text-xs rounded-lg p-3 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10 pointer-events-none min-w-80">
+                        <div className="space-y-2">
+                          <div>
+                            <span className="font-semibold">Marka:</span>
+                            <span className="text-gray-300 ml-2">{SecurityUtils.sanitizeHtml(grader.brand || '')}</span>
+                          </div>
+                          <div>
+                            <span className="font-semibold">Model:</span>
+                            <span className="text-gray-300 ml-2">{SecurityUtils.sanitizeHtml(grader.model || '')}</span>
+                          </div>
+                          <div>
+                            <span className="font-semibold">Lokasyon:</span>
+                            <span className="text-gray-300 ml-2">{SecurityUtils.sanitizeHtml(grader.location)}</span>
+                          </div>
+                          {grader.description && (
+                            <div>
+                              <span className="font-semibold">Açıklama:</span>
+                              <p className="text-gray-300">{SecurityUtils.sanitizeHtml(grader.description)}</p>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </td>
@@ -338,6 +721,12 @@ const AdminDashboard = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {grader.year}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <div className="flex items-center space-x-1">
+                        <span>{getCountryFlag(grader.stockCountry)}</span>
+                        <span>{grader.stockCountry}</span>
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       <div className="flex items-center space-x-1">
@@ -406,7 +795,21 @@ const AdminDashboard = () => {
       {activeTab === 'parts' && (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-xl font-bold text-gray-900">Parçalar</h2>
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl font-bold text-gray-900">Parçalar</h2>
+              {searchQuery && (
+                <div className="text-sm text-gray-600">
+                  <span className="font-medium">{filteredParts.length}</span> sonuç bulundu
+                  {searchType !== 'all' && (
+                    <span className="ml-2 text-orange-600">
+                      ({searchType === 'partNumber' ? 'Parça Numarası' : 
+                        searchType === 'model' ? 'Model' : 
+                        searchType === 'description' ? 'Açıklama' : 'Tam Metin'} araması)
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -419,7 +822,16 @@ const AdminDashboard = () => {
                     Fiyat
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Marka
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Kategori
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Stok Ülkesi
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Stok Miktarı
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     İlan Tarihi
@@ -436,8 +848,8 @@ const AdminDashboard = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {parts.map((part) => (
-                  <tr key={part.id} className="hover:bg-gray-50">
+                {filteredParts.map((part) => (
+                  <tr key={part.id} className="hover:bg-gray-50 group relative">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
                         <div className="flex-shrink-0 h-12 w-16">
@@ -452,7 +864,47 @@ const AdminDashboard = () => {
                             {SecurityUtils.sanitizeHtml(part.title)}
                           </div>
                           <div className="text-sm text-gray-500">
-                            {SecurityUtils.sanitizeHtml(part.partNumber)}
+                            <span 
+                              dangerouslySetInnerHTML={{
+                                __html: highlightSearchTerm(
+                                  SecurityUtils.sanitizeHtml(part.partNumber), 
+                                  searchQuery
+                                )
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Hover Tooltip */}
+                      <div className="absolute left-0 top-0 bg-gray-900 text-white text-xs rounded-lg p-3 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10 pointer-events-none min-w-80">
+                        <div className="space-y-2">
+                          <div>
+                            <span className="font-semibold">Açıklama:</span>
+                            <p className="text-gray-300">{SecurityUtils.sanitizeHtml(part.description)}</p>
+                          </div>
+                          <div>
+                            <span className="font-semibold">Uyumlu Modeller:</span>
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {part.compatibleModels.slice(0, 5).map(model => (
+                                <span key={model} className="bg-gray-700 text-gray-300 text-xs px-2 py-1 rounded">
+                                  {model}
+                                </span>
+                              ))}
+                              {part.compatibleModels.length > 5 && (
+                                <span className="bg-gray-700 text-gray-300 text-xs px-2 py-1 rounded">
+                                  +{part.compatibleModels.length - 5} daha
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div>
+                            <span className="font-semibold">Özellikler:</span>
+                            <div className="text-gray-300 text-xs space-y-1">
+                              <div>Malzeme: {part.specifications.material}</div>
+                              <div>Ağırlık: {part.specifications.weight}</div>
+                              <div>Garanti: {part.specifications.warranty}</div>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -461,7 +913,33 @@ const AdminDashboard = () => {
                       {formatPrice(part.price)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {SecurityUtils.sanitizeHtml(part.brand)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {SecurityUtils.sanitizeHtml(part.category)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <div className="flex items-center space-x-1">
+                        <span>{getCountryFlag(part.stockCountry)}</span>
+                        <span>{part.stockCountry}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <div className="flex items-center space-x-2">
+                        <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                          part.stockQuantity === 0 
+                            ? 'bg-red-100 text-red-800' 
+                            : part.stockQuantity <= 5 
+                            ? 'bg-yellow-100 text-yellow-800' 
+                            : 'bg-green-100 text-green-800'
+                        }`}>
+                          {part.stockQuantity}
+                        </span>
+                        <span className="text-xs text-gray-500">
+                          {part.stockQuantity === 0 ? 'Stok Yok' : 
+                           part.stockQuantity <= 5 ? 'Düşük Stok' : 'Stokta'}
+                        </span>
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       <div className="flex items-center space-x-1">
@@ -894,12 +1372,6 @@ const AdminDashboard = () => {
         </div>
       )}
 
-      {/* Analytics Tab */}
-      {activeTab === 'analytics' && (
-        <div className="space-y-6">
-          <ChatAnalytics />
-        </div>
-      )}
     </div>
   );
 };

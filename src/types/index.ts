@@ -78,6 +78,7 @@ export interface Part {
   createdAt: string;
   listingDate: string; // İlana koyma tarihi
   stockCountry: 'EU' | 'Kenya' | 'US'; // Stok ülkesi
+  stockQuantity: number; // Stok miktarı
 }
 
 export interface User {

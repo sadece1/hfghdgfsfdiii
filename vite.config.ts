@@ -40,7 +40,6 @@ export default defineConfig({
           // Vendor chunks for better caching
           vendor: ['react', 'react-dom'],
           router: ['react-router-dom'],
-          supabase: ['@supabase/supabase-js'],
           ui: ['react-icons', 'swiper'],
           utils: ['zustand', 'crypto-js', 'bcryptjs'],
           helmet: ['react-helmet-async']
@@ -72,7 +71,6 @@ export default defineConfig({
       'react',
       'react-dom',
       'react-router-dom',
-      '@supabase/supabase-js',
       'react-helmet-async',
       'zustand'
     ],

@@ -3,7 +3,6 @@ import { Routes, Route, useLocation } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import ContactToolbar from './components/ContactToolbar';
-import AdvancedChatBot from './components/AdvancedChatBot';
 import { UnauthorizedPage } from './components/ProtectedRoute';
 import { SecurityProvider, HTTPSRedirect, SecurityMonitor } from './components/SecurityProvider';
 import { withSecurity } from './components/withSecurity';
@@ -14,6 +13,7 @@ import Gallery from './pages/Gallery';
 
 // Lazy load other pages
 const Parts = lazy(() => import('./pages/Parts'));
+const SalesMap = lazy(() => import('./pages/SalesMap'));
 const GraderDetails = lazy(() => import('./pages/GraderDetails'));
 const PartDetails = lazy(() => import('./pages/PartDetails'));
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
@@ -88,6 +88,11 @@ function App() {
             <Route path="/parts" element={
               <Suspense fallback={<PageLoader />}>
                 <Parts />
+              </Suspense>
+            } />
+            <Route path="/sales-map" element={
+              <Suspense fallback={<PageLoader />}>
+                <SalesMap />
               </Suspense>
             } />
             <Route path="/search" element={
@@ -175,7 +180,6 @@ function App() {
         </main>
         <Footer />
         <ContactToolbar />
-        <AdvancedChatBot />
       </div>
     </SecurityProvider>
   );

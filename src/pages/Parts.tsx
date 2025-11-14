@@ -204,6 +204,15 @@ const Parts = () => {
                               </span>
                             )}
                             <div>
+                              <span className={`text-xs px-2 py-1 rounded-lg font-medium ${
+                                part.stockQuantity > 0 
+                                  ? 'bg-blue-100 text-blue-800' 
+                                  : 'bg-red-100 text-red-800'
+                              }`}>
+                                Stok: {part.stockQuantity}
+                              </span>
+                            </div>
+                            <div>
                               <span className={`text-sm px-3 py-2 rounded-lg font-bold shadow-md ${
                                 part.isSold 
                                   ? 'bg-red-500 text-white' 

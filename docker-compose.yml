@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  # MySQL Database
+  mysql:
+    image: mysql:8.0
+    container_name: grader_mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: grader_marketplace
+      MYSQL_USER: grader_user
+      MYSQL_PASSWORD: grader_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    networks:
+      - grader_network
+
+  # Backend API
+  backend:
+    build: ./server
+    container_name: grader_backend
+    environment:
+      DB_HOST: mysql
+      DB_USER: grader_user
+      DB_PASSWORD: grader_password
+      DB_NAME: grader_marketplace
+      DB_PORT: 3306
+      JWT_SECRET: docker-jwt-secret-key-2024
+      NODE_ENV: production
+      PORT: 3000
+      FRONTEND_URL: http://localhost:5173
+    ports:
+      - "3000:3000"
+    depends_on:
+      - mysql
+    networks:
+      - grader_network
+    volumes:
+      - ./server/uploads:/app/uploads
+
+  # Frontend (Development)
+  frontend:
+    build: .
+    container_name: grader_frontend
+    environment:
+      VITE_API_URL: http://localhost:3000/api
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    networks:
+      - grader_network
+    volumes:
+      - .:/app
+      - /app/node_modules
+
+volumes:
+  mysql_data:
+
+networks:
+  grader_network:
+    driver: bridge
