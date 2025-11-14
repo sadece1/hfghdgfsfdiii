@@ -22,6 +22,8 @@ RUN npm install -g serve
 EXPOSE 5173
 
 # Start the application
-CMD ["nginx", "-g", "daemon off;"]
+ENTRYPOINT ["nginx"]
+CMD ["-g", "daemon off;"]
+
 
 
